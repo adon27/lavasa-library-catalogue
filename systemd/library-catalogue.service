@@ -1,0 +1,6 @@
+[Unit]
+Description=Rebuild and publish the Lavasa library catalogue copy
+
+[Service]
+Type=oneshot
+ExecStart=%h/lavasa-library-catalogue/update.sh
