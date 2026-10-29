@@ -1,6 +1,11 @@
 #!/bin/sh
 cd "$(dirname "$0")" || exit 1
-python3 -I crawl_catalogue.py || exit 1
+n=0
+until python3 -I crawl_catalogue.py; do
+  n=$((n+1))
+  [ "$n" -ge 3 ] && exit 1
+  sleep 1800
+done
 git add library-catalogue.json
 if git diff --cached --quiet; then
   echo "no change"
