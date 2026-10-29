@@ -25,7 +25,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "library-catalogue.json")
 OPAC = "https://lavasaopac.christuniversity.in/cgi-bin/koha/opac-search.pl"
-QUERIES = ["a", "the", "of", "and", "in", "to", "for", "by", "on", "with", "an", "i", "management", "law", "india", "journal", "2020", "2015", "2010", "2005"]
+QUERIES = ["a", "i"]
 COUNT = 100
 DELAY = 0.4
 
@@ -76,27 +76,30 @@ def records(page):
     return out
 
 
+def fetch_page(q, offset):
+    page = get("%s?idx=kw&q=%s&count=%d&offset=%d" % (OPAC, urllib.parse.quote(q), COUNT, offset))
+    return page, records(page)
+
+
 def main():
+    from concurrent.futures import ThreadPoolExecutor
     quick = "--quick" in sys.argv
     tmp = OUT + ".tmp"
     seen = {}
     for q in QUERIES:
-        offset, total = 0, None
-        while True:
-            url = "%s?idx=kw&q=%s&count=%d&offset=%d" % (OPAC, urllib.parse.quote(q), COUNT, offset)
-            page = get(url)
-            if total is None:
-                m = re.search(r"returned\s+([\d,]+)\s+result", page)
-                total = int(m.group(1).replace(",", "")) if m else 0
-            rs = records(page)
-            for r in rs:
-                seen[r["i"]] = r
-            offset += COUNT
-            if not rs or offset >= total or (quick and offset >= 2 * COUNT):
-                break
-            time.sleep(DELAY)
+        page, rs = fetch_page(q, 0)
+        m = re.search(r"returned\s+([\d,]+)\s+result", page)
+        total = int(m.group(1).replace(",", "")) if m else 0
+        for r in rs:
+            seen[r["i"]] = r
+        offsets = list(range(COUNT, total, COUNT))
+        if quick:
+            offsets = offsets[:1]
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            for page, rs in ex.map(lambda o: fetch_page(q, o), offsets):
+                for r in rs:
+                    seen[r["i"]] = r
         print("%-12s total %5s  collected %6d" % (q, total, len(seen)), flush=True)
-        time.sleep(DELAY)
     rs = sorted(seen.values(), key=lambda r: r["i"])
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     if len(rs) < 5000 and not quick:
